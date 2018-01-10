@@ -2,6 +2,9 @@ const express = require('express');
 const bodyPaser = require('body-parser');
 const session = require('express-session');
 const massive = require('massive');
+const bcrypt =  require('bcrypt');
+
+const saltRounds = 12;
 
 require('dotenv').config();
 const app = express();
@@ -16,15 +19,41 @@ app.use(session({
 app.use(express.static(`${__dirname}/../build`));
 
 app.post('/register', (req, res) => {
-  // Add code here
+  const db = app.get('db');
+  const { username, password } = req.body;
+  bcrypt.hash(password, saltRounds).then(hashPassword => {
+    db.create_user([username, hashPassword]).then(() => {
+      req.session.user = { username: username };
+      res.json({ user: req.session.user})
+    }).catch(error => {
+      console.log('error', error);
+      res.status(500).json({ message: 'Something bad happened! '})
+    })
+  })
 });
 
 app.post('/login', (req, res) => {
-  // Add code here
+  const db = app.get('db');
+  const { username, password } = req.body;
+  db.find_user([username]).then(users => {
+    if (users.length) {
+      bcrypt.compare(password, users[0].password).then(passwordsMatch => {
+        if (passwordsMatch) {
+          req.session.user = { username: users[0].username };
+          res.json({ user: req.session.user });
+        } else {
+          res.status(403).json({ message: 'Wrong password' })
+        }
+      })
+    } else {
+      res.status(403).json({ message: "That user is not registered" })
+    }
+  })
 });
 
 app.post('/logout', (req, res) => {
-  // Add code here
+  req.session.destroy();
+  res.status(200).send();
 });
 
 function ensureLoggedIn(req, res, next) {
